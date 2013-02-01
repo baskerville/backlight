@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#define SYSFS_BACKLIGHT  "/sys/class/backlight/apple_backlight"
+#define SYSFS_BACKLIGHT  "/sys/class/backlight/nvidia_backlight"
 #define BACKLIGHT_INTERFACE  SYSFS_BACKLIGHT"/brightness"
 #define ACTUAL_BRIGHTNESS_VALUE  SYSFS_BACKLIGHT"/actual_brightness"
 #define MAXIMUM_BRIGHTNESS_VALUE  SYSFS_BACKLIGHT"/max_brightness"
