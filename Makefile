@@ -1,10 +1,10 @@
-CC      = gcc
-LIBS    = -lm
-CFLAGS  = -std=c99 -pedantic -Wall -Wextra -Os
-LDFLAGS = -s $(LIBS)
+CC      ?= gcc
+LIBS     = -lm
+CFLAGS  += -std=c99 -pedantic -Wall -Wextra -Os
+LDFLAGS += -s $(LIBS)
 
 PREFIX    ?= /usr/local
-BINPREFIX = $(PREFIX)/bin
+BINPREFIX  = $(PREFIX)/bin
 
 SRC = backlight.c
 OBJ = $(SRC:.c=.o)
