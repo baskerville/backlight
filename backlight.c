@@ -1,16 +1,59 @@
+#define _DEFAULT_SOURCE // expose u_short in glibc, needed by fts(3)
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/param.h> // learn MAXPATHLEN
+#include <fts.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#define SYSFS_BACKLIGHT  "/sys/class/backlight/apple_backlight"
-#define BACKLIGHT_INTERFACE  SYSFS_BACKLIGHT"/brightness"
-#define ACTUAL_BRIGHTNESS_VALUE  SYSFS_BACKLIGHT"/actual_brightness"
-#define MAXIMUM_BRIGHTNESS_VALUE  SYSFS_BACKLIGHT"/max_brightness"
+
+char backlight_interface[MAXPATHLEN];
+char actual_brightness_value[MAXPATHLEN];
+char maximum_brightness_value[MAXPATHLEN];
+
+int find_sysfs_backlight(void)
+{
+    bool found = false;
+    char *path_argv[] = { "/sys/class/backlight", NULL };
+    FTS *ftsp = fts_open(path_argv, FTS_LOGICAL | FTS_NOSTAT, NULL);
+    if (ftsp != NULL) {
+        fts_read(ftsp);
+
+        struct stat statb;
+        FTSENT *curr = fts_children(ftsp, FTS_NAMEONLY);
+        while (!found && curr != NULL) {
+            snprintf(actual_brightness_value,
+                     sizeof (actual_brightness_value),
+                     "%s%s/actual_brightness",
+                     curr->fts_path,
+                     curr->fts_name);
+            if (stat(actual_brightness_value, &statb) == 0 &&
+                S_ISREG(statb.st_mode)) {
+                found = true;
+                snprintf(maximum_brightness_value,
+                         sizeof (maximum_brightness_value),
+                         "%s%s/max_brightness",
+                         curr->fts_path,
+                         curr->fts_name);
+                snprintf(backlight_interface,
+                         sizeof (backlight_interface),
+                         "%s%s/brightness",
+                         curr->fts_path,
+                         curr->fts_name);
+            }
+            curr = curr->fts_link;
+        }
+        fts_close(ftsp);
+    }
+    return found ? 0 : -1;
+}
 
 int percent(int *v)
 {
     unsigned int val;
-    FILE *src = fopen(MAXIMUM_BRIGHTNESS_VALUE, "r");
+    FILE *src = fopen(maximum_brightness_value, "r");
     if (src != NULL) {
         int nv = fscanf(src, "%u", &val);
         if (nv == 1)
@@ -31,14 +74,14 @@ int main(int argc, char *argv[])
     if (argc < 2) {
         fprintf(stderr, "usage: backlight c|m|[+|-]VALUE[%%]\n");
         exit_status = EXIT_FAILURE;
-    } else {
+    } else if (find_sysfs_backlight() == 0) {
         char *msg = argv[1];
         if (isalpha(msg[0])) {
             FILE *src = NULL;
             if (strcmp(msg, "c") == 0)
-                src = fopen(ACTUAL_BRIGHTNESS_VALUE, "r");
+                src = fopen(actual_brightness_value, "r");
             else if (strcmp(msg, "m") == 0)
-                src = fopen(MAXIMUM_BRIGHTNESS_VALUE, "r");
+                src = fopen(maximum_brightness_value, "r");
             if (src != NULL) {
                 unsigned int val;
                 int nv = fscanf(src, "%u", &val);
@@ -51,8 +94,8 @@ int main(int argc, char *argv[])
                 exit_status = EXIT_FAILURE;
             }
         } else {
-            FILE *src = fopen(ACTUAL_BRIGHTNESS_VALUE, "r");
-            FILE *dst = fopen(BACKLIGHT_INTERFACE, "w");
+            FILE *src = fopen(actual_brightness_value, "r");
+            FILE *dst = fopen(backlight_interface, "w");
             if (src != NULL && dst != NULL) {
                 char p = 0;
                 int next;
@@ -79,6 +122,8 @@ int main(int argc, char *argv[])
                     fclose(dst);
             }
         }
+    } else {
+        exit_status = EXIT_FAILURE;
     }
 
     return exit_status;
