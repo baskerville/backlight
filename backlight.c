@@ -9,9 +9,32 @@
 #include <string.h>
 #include <ctype.h>
 
+typedef enum { COMMAND_C, COMMAND_M, COMMAND_UNDEF } COMMAND;
+
 char backlight_interface[MAXPATHLEN];
 char actual_brightness_value[MAXPATHLEN];
 char maximum_brightness_value[MAXPATHLEN];
+
+COMMAND determine_command(char *msg)
+{
+    struct {
+        COMMAND id;
+        char *word;
+    } commands[] = {
+        { COMMAND_C, "current" },
+        { COMMAND_M, "maximum" },
+        { COMMAND_UNDEF, NULL }
+    }, *curr = commands, *match = NULL;
+    unsigned int nmatch = 0;
+    while (curr->word != NULL) {
+        if (strstr(curr->word, msg) == curr->word) {
+            nmatch++;
+            match = curr;
+        }
+        curr++;
+    }
+    return nmatch == 1 ? match->id : COMMAND_UNDEF;
+}
 
 int find_sysfs_backlight(void)
 {
@@ -72,16 +95,22 @@ int main(int argc, char *argv[])
     int exit_status = EXIT_SUCCESS;
 
     if (argc < 2) {
-        fprintf(stderr, "usage: backlight c|m|[+|-]VALUE[%%]\n");
+        fprintf(stderr, "usage: backlight current|maximum|[+|-]VALUE[%%]\n");
         exit_status = EXIT_FAILURE;
     } else if (find_sysfs_backlight() == 0) {
         char *msg = argv[1];
         if (isalpha(msg[0])) {
             FILE *src = NULL;
-            if (strcmp(msg, "c") == 0)
-                src = fopen(actual_brightness_value, "r");
-            else if (strcmp(msg, "m") == 0)
-                src = fopen(maximum_brightness_value, "r");
+            switch (determine_command(msg)) {
+                case COMMAND_C:
+                    src = fopen(actual_brightness_value, "r");
+                    break;
+                case COMMAND_M:
+                    src = fopen(maximum_brightness_value, "r");
+                    break;
+                default:
+                    break;
+            }
             if (src != NULL) {
                 unsigned int val;
                 int nv = fscanf(src, "%u", &val);
