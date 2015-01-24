@@ -1,7 +1,7 @@
-#define _DEFAULT_SOURCE // expose u_short in glibc, needed by fts(3)
+#define _DEFAULT_SOURCE   // exposes u_short in glibc, needed by fts(3)
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/param.h> // learn MAXPATHLEN
+#include <sys/param.h>    // for MAXPATHLEN
 #include <fts.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -9,34 +9,13 @@
 #include <string.h>
 #include <ctype.h>
 
-typedef enum { COMMAND_C, COMMAND_M, COMMAND_UNDEF } COMMAND;
+typedef enum { CMD_CUR, CMD_MAX, CMD_UNDEF } CMD;
 
 char backlight_interface[MAXPATHLEN];
 char actual_brightness_value[MAXPATHLEN];
 char maximum_brightness_value[MAXPATHLEN];
 
-COMMAND determine_command(char *msg)
-{
-    struct {
-        COMMAND id;
-        char *word;
-    } commands[] = {
-        { COMMAND_C, "current" },
-        { COMMAND_M, "maximum" },
-        { COMMAND_UNDEF, NULL }
-    }, *curr = commands, *match = NULL;
-    unsigned int nmatch = 0;
-    while (curr->word != NULL) {
-        if (strstr(curr->word, msg) == curr->word) {
-            nmatch++;
-            match = curr;
-        }
-        curr++;
-    }
-    return nmatch == 1 ? match->id : COMMAND_UNDEF;
-}
-
-int find_sysfs_backlight(void)
+bool has_sysfs_backlight(void)
 {
     bool found = false;
     char *path_argv[] = { "/sys/class/backlight", NULL };
@@ -45,35 +24,56 @@ int find_sysfs_backlight(void)
         fts_read(ftsp);
 
         struct stat statb;
-        FTSENT *curr = fts_children(ftsp, FTS_NAMEONLY);
-        while (!found && curr != NULL) {
+        FTSENT *cur = fts_children(ftsp, FTS_NAMEONLY);
+        while (!found && cur != NULL) {
             snprintf(actual_brightness_value,
                      sizeof (actual_brightness_value),
                      "%s%s/actual_brightness",
-                     curr->fts_path,
-                     curr->fts_name);
+                     cur->fts_path,
+                     cur->fts_name);
             if (stat(actual_brightness_value, &statb) == 0 &&
                 S_ISREG(statb.st_mode)) {
                 found = true;
                 snprintf(maximum_brightness_value,
                          sizeof (maximum_brightness_value),
                          "%s%s/max_brightness",
-                         curr->fts_path,
-                         curr->fts_name);
+                         cur->fts_path,
+                         cur->fts_name);
                 snprintf(backlight_interface,
                          sizeof (backlight_interface),
                          "%s%s/brightness",
-                         curr->fts_path,
-                         curr->fts_name);
+                         cur->fts_path,
+                         cur->fts_name);
             }
-            curr = curr->fts_link;
+            cur = cur->fts_link;
         }
         fts_close(ftsp);
     }
-    return found ? 0 : -1;
+    return found;
 }
 
-int percent(int *v)
+CMD parse_command(char *msg)
+{
+    struct {
+        CMD id;
+        char *name;
+    } commands[] = {
+        { CMD_CUR, "current" },
+        { CMD_MAX, "maximum" },
+        { CMD_UNDEF, NULL }
+    }, *cur = commands, *match = NULL;
+    unsigned int nmatch = 0;
+    while (cur->name != NULL) {
+        if (strstr(cur->name, msg) == cur->name) {
+            nmatch++;
+            match = cur;
+        }
+        cur++;
+    }
+    return nmatch == 1 ? match->id : CMD_UNDEF;
+}
+
+bool parse_percent(int *v)
 {
     unsigned int val;
     FILE *src = fopen(maximum_brightness_value, "r");
@@ -82,12 +82,12 @@ int percent(int *v)
         if (nv == 1)
             *v = (*v / 100.0) * val;
         else
-            return -1;
+            return false;
         fclose(src);
     } else {
-        return -1;
+        return false;
     }
-    return 0;
+    return true;
 }
 
 int main(int argc, char *argv[])
@@ -95,17 +95,17 @@ int main(int argc, char *argv[])
     int exit_status = EXIT_SUCCESS;
 
     if (argc < 2) {
-        fprintf(stderr, "usage: backlight current|maximum|[+|-]VALUE[%%]\n");
+        fprintf(stderr, "usage: backlight c[urrent]|m[aximum]|[+|-]VALUE[%%]\n");
         exit_status = EXIT_FAILURE;
-    } else if (find_sysfs_backlight() == 0) {
+    } else if (has_sysfs_backlight()) {
         char *msg = argv[1];
         if (isalpha(msg[0])) {
             FILE *src = NULL;
-            switch (determine_command(msg)) {
-                case COMMAND_C:
+            switch (parse_command(msg)) {
+                case CMD_CUR:
                     src = fopen(actual_brightness_value, "r");
                     break;
-                case COMMAND_M:
+                case CMD_MAX:
                     src = fopen(maximum_brightness_value, "r");
                     break;
                 default:
@@ -129,7 +129,7 @@ int main(int argc, char *argv[])
                 char p = 0;
                 int next;
                 int nn = sscanf(msg, "%i%c", &next, &p);
-                if (nn == 1 || (nn == 2 && p == '%' && percent(&next) == 0)) {
+                if (nn == 1 || (nn == 2 && p == '%' && parse_percent(&next))) {
                     if (msg[0] == '-' || msg[0] == '+') {
                         unsigned int val;
                         int nv = fscanf(src, "%u", &val);
