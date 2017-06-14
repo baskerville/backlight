@@ -77,14 +77,14 @@ CMD parse_command(char *msg)
 	return nmatch == 1 ? match->id : CMD_UNDEF;
 }
 
-bool parse_percent(int *v)
+bool query_max(int *v)
 {
-	unsigned int val;
+	int val;
 	FILE *src = fopen(maximum_brightness_value, "r");
 	if (src != NULL) {
-		int nv = fscanf(src, "%u", &val);
+		int nv = fscanf(src, "%i", &val);
 		if (nv == 1)
-			*v = (*v / 100.0) * val;
+			*v =  val;
 		else
 			return false;
 		fclose(src);
@@ -131,19 +131,20 @@ int main(int argc, char *argv[])
 			FILE *dst = fopen(backlight_interface, "w");
 			if (src != NULL && dst != NULL) {
 				char p = 0;
-				int next;
+				int next, max;
 				int nn = sscanf(msg, "%i%c", &next, &p);
-				if (nn == 1 || (nn == 2 && p == '%' && parse_percent(&next))) {
+				if ((nn == 1 || (nn == 2 && p == '%')) && query_max(&max)) {
 					if (msg[0] == '-' || msg[0] == '+') {
-						unsigned int val;
-						int nv = fscanf(src, "%u", &val);
+						int val;
+						int nv = fscanf(src, "%i", &val);
 						if (nv == 1) {
-							fprintf(dst, "%u", val + next);
+							val += next/100.0f*max;
+							fprintf(dst, "%u", val > max ? max : val < 0 ? 0 : val);
 						} else {
 							exit_status = EXIT_FAILURE;
 						}
 					} else {
-						fprintf(dst, "%u", next);
+						fprintf(dst, "%u", next > max ? max : next);
 					}
 				} else {
 					exit_status = EXIT_FAILURE;
