@@ -143,7 +143,12 @@ int main(int argc, char *argv[])
 						} else {
 							exit_status = EXIT_FAILURE;
 						}
-					} else {
+					} else if (nn ==2 && p == '%') {
+						int val;
+						val = max/100.0f*next;
+						fprintf(dst, "%u", val > max ? max : val < 0 ? 0 : val);
+					}
+					else {
 						fprintf(dst, "%u", next > max ? max : next);
 					}
 				} else {
